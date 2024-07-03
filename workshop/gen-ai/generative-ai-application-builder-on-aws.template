@@ -1,0 +1,2299 @@
+{
+  "Description": "(SO0276) - generative-ai-application-builder-on-aws - DeploymentPlatformStack - Version v1.4.4",
+  "Metadata": {
+    "AWS::CloudFormation::Interface": {
+      "ParameterGroups": [
+        {
+          "Label": {
+            "default": "Please provide admin user email"
+          },
+          "Parameters": [
+            "AdminUserEmail"
+          ]
+        },
+        {
+          "Label": {
+            "default": "Optional: If you would like to deploy the solution with a VPC Configuration"
+          },
+          "Parameters": [
+            "VpcEnabled",
+            "CreateNewVpc",
+            "IPAMPoolId"
+          ]
+        },
+        {
+          "Label": {
+            "default": "Optional: Existing VPC configuration to use, if you would like to deploy the solution in a VPC and with your existing VPC configuration."
+          },
+          "Parameters": [
+            "ExistingVpcId",
+            "ExistingPrivateSubnetIds",
+            "ExistingSecurityGroupIds",
+            "VpcAzs"
+          ]
+        }
+      ]
+    }
+  },
+  "Parameters": {
+    "VpcEnabled": {
+      "Type": "String",
+      "Default": "No",
+      "AllowedPattern": "^Yes|No$",
+      "AllowedValues": [
+        "Yes",
+        "No"
+      ],
+      "Description": "Should the stacks resources be deployed within a VPC"
+    },
+    "CreateNewVpc": {
+      "Type": "String",
+      "Default": "No",
+      "AllowedPattern": "^Yes|No$",
+      "AllowedValues": [
+        "Yes",
+        "No"
+      ],
+      "Description": "Select \"Yes\", if you would like to create a new VPC"
+    },
+    "IPAMPoolId": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^ipam-pool-([0-9a-zA-Z])+$",
+      "ConstraintDescription": "The provided IPAM Pool Id is not a valid format. IPAM Id should be be of the following format \"^ipam-pool-([0-9a-zA-Z])+$\"",
+      "Description": "If you would like to assign the CIDR range using AWS VPC IP Address Manager, please provide the IPAM pool Id to use",
+      "MaxLength": 50
+    },
+    "ExistingVpcId": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^vpc-\\w{8}(\\w{9})?$",
+      "Description": "VPC ID of an existing VPC to be used for the use case."
+    },
+    "ExistingPrivateSubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "AllowedPattern": "^$|^subnet-\\w{8}(\\w{9})?$",
+      "ConstraintDescription": "If using an existing VPC configuration, please provide a valid list of subnet Ids for AWS Lambda function configuration",
+      "Description": "Comma separated list of subnet IDs of existing private subnets to be used to deploy the AWS Lambda function"
+    },
+    "VpcAzs": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "AllowedPattern": "^$|^[a-z0-9-]+$",
+      "ConstraintDescription": "If using an existing VPC, please provide a valid list of AZs",
+      "Description": "Comma separated list of AZs in which subnets of the VPCs are created"
+    },
+    "ExistingSecurityGroupIds": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "AllowedPattern": "^$|^sg-\\w{8}(\\w{9})?$",
+      "ConstraintDescription": "If using an existing VPC, please provide a valid list of Security Group IDs for AWS Lambda function configuration",
+      "Description": "Comma separated list of security groups of the existing vpc to be used for configuring lambda functions"
+    },
+    "AdminUserEmail": {
+      "Type": "String",
+      "AllowedPattern": "^$|[A-Za-z0-9_!#$%&'*+/=?`{|}~^.-]+@[A-Za-z0-9.-]+$",
+      "ConstraintDescription": "Please provide a valid email",
+      "Description": "Email required to create the default user for the admin platform"
+    }
+  },
+  "Conditions": {
+    "VPCEnabledCondition": {
+      "Fn::Equals": [
+        {
+          "Ref": "VpcEnabled"
+        },
+        "Yes"
+      ]
+    },
+    "CreateNewVPCCondition": {
+      "Fn::Equals": [
+        {
+          "Ref": "CreateNewVpc"
+        },
+        "Yes"
+      ]
+    },
+    "DeployVPCCondition": {
+      "Fn::And": [
+        {
+          "Condition": "CreateNewVPCCondition"
+        },
+        {
+          "Condition": "VPCEnabledCondition"
+        }
+      ]
+    },
+    "IPAMPoolIdProvidedCondition": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "IPAMPoolId"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "AnonymousDataAWSCondition": {
+      "Fn::Equals": [
+        {
+          "Fn::FindInMap": [
+            "Solution",
+            "Data",
+            "SendAnonymousUsageData"
+          ]
+        },
+        "Yes"
+      ]
+    },
+    "IsInternalUserCondition": {
+      "Fn::Equals": [
+        {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::Split": [
+                ".",
+                {
+                  "Fn::Select": [
+                    1,
+                    {
+                      "Fn::Split": [
+                        "@",
+                        {
+                          "Ref": "AdminUserEmail"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "amazon"
+      ]
+    },
+    "DeployCustomDashboard": {
+      "Fn::Equals": [
+        {
+          "Fn::FindInMap": [
+            "FeaturesToDeploy",
+            "Deploy",
+            "CustomDashboard"
+          ]
+        },
+        "Yes"
+      ]
+    },
+    "DeployWebApp": {
+      "Fn::Equals": [
+        {
+          "Fn::FindInMap": [
+            "FeaturesToDeploy",
+            "Deploy",
+            "WebApp"
+          ]
+        },
+        "Yes"
+      ]
+    },
+    "CDKMetadataAvailable": {
+      "Fn::Or": [
+        {
+          "Fn::Or": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "af-south-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-east-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-northeast-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-northeast-2"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-south-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-southeast-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ap-southeast-2"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "ca-central-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "cn-north-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "cn-northwest-1"
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Or": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-central-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-north-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-south-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-west-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-west-2"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "eu-west-3"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "il-central-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "me-central-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "me-south-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "sa-east-1"
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Or": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "us-east-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "us-east-2"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "us-west-1"
+              ]
+            },
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AWS::Region"
+                },
+                "us-west-2"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Rules": {
+    "CheckIfVPCParamsProvided": {
+      "RuleCondition": {
+        "Fn::And": [
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "VpcEnabled"
+              },
+              "Yes"
+            ]
+          },
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "CreateNewVpc"
+              },
+              "No"
+            ]
+          }
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "ExistingVpcId"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "To use existing VPC, you must provide a value for parameter ExistingVpcId"
+        },
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  {
+                    "Ref": "ExistingPrivateSubnetIds"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "To use existing VPC, private subnet Ids should be provided."
+        },
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  {
+                    "Ref": "ExistingSecurityGroupIds"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "To use existing VPC, SecurityGroups associated with the subnets should be provided."
+        }
+      ]
+    },
+    "CheckIfExistingVPCParamsAreProvidedWhenNotAllowed": {
+      "RuleCondition": {
+        "Fn::Or": [
+          {
+            "Fn::And": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "VpcEnabled"
+                  },
+                  "Yes"
+                ]
+              },
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "CreateNewVpc"
+                  },
+                  "Yes"
+                ]
+              }
+            ]
+          },
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "VpcEnabled"
+              },
+              "No"
+            ]
+          }
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "ExistingVpcId"
+              },
+              ""
+            ]
+          },
+          "AssertDescription": "When creating a new VPC, you can not provide an existing VPC ID"
+        },
+        {
+          "Assert": {
+            "Fn::Contains": [
+              {
+                "Ref": "ExistingPrivateSubnetIds"
+              },
+              ""
+            ]
+          },
+          "AssertDescription": "If you are not using a VPC or \"CreateNewVpc\" is set as \"Yes\", you can not provide existing subnet IDs"
+        },
+        {
+          "Assert": {
+            "Fn::Contains": [
+              {
+                "Ref": "VpcAzs"
+              },
+              ""
+            ]
+          },
+          "AssertDescription": "If you are not using a VPC or \"CreateNewVpc\" is set as \"Yes\", you can not provide AZs."
+        },
+        {
+          "Assert": {
+            "Fn::Contains": [
+              {
+                "Ref": "ExistingSecurityGroupIds"
+              },
+              ""
+            ]
+          },
+          "AssertDescription": "If you are not using a VPC or \"CreateNewVpc\" is set as \"Yes\", you can not provide SecurityGroups"
+        }
+      ]
+    },
+    "CheckIfDeloyVpcNotSetIfVpcEnabledIsFalse": {
+      "RuleCondition": {
+        "Fn::Equals": [
+          {
+            "Ref": "VpcEnabled"
+          },
+          "No"
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "CreateNewVpc"
+              },
+              "No"
+            ]
+          },
+          "AssertDescription": "Deployment is not VPC enabled, first select \"VpcEnabled\" to \"Yes\", and then select \"CreateNewVpc\" to \"Yes\" to create a new VPC"
+        }
+      ]
+    },
+    "CheckIfIPAMPoolIdCanBeProvided": {
+      "RuleCondition": {
+        "Fn::Or": [
+          {
+            "Fn::And": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "VpcEnabled"
+                  },
+                  "Yes"
+                ]
+              },
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "CreateNewVpc"
+                  },
+                  "No"
+                ]
+              }
+            ]
+          },
+          {
+            "Fn::And": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "VpcEnabled"
+                  },
+                  "No"
+                ]
+              },
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "CreateNewVpc"
+                  },
+                  "No"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "IPAMPoolId"
+              },
+              ""
+            ]
+          },
+          "AssertDescription": "To use AWS VPC IP Address Manager, first select \"VpcEnabled\" to \"Yes\", and then select \"CreateNewVpc\" to \"Yes\""
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "DeploymentPlatformSetupAccessLog67D5D503": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      },
+      "UpdateReplacePolicy": "Retain",
+      "DeletionPolicy": "Retain",
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "This S3 bucket is used as the access logging bucket for another bucket",
+              "id": "AwsSolutions-S1"
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupAccessLogPolicy2FB262B2": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "DeploymentPlatformSetupAccessLog67D5D503"
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*"
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "DeploymentPlatformSetupAccessLog67D5D503",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "DeploymentPlatformSetupAccessLog67D5D503",
+                          "Arn"
+                        ]
+                      },
+                      "/*"
+                    ]
+                  ]
+                }
+              ]
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      }
+    },
+    "DeploymentPlatformSetupInfraSetupCustomResourceDynamoDBPolicy9530C9CF": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem"
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition"
+                    },
+                    ":dynamodb:",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId"
+                    },
+                    ":table/*"
+                  ]
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "DeploymentPlatformSetupInfraSetupCustomResourceDynamoDBPolicy9530C9CF",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Lambda role policy is to read and write dynamodb buckets for model info and configuration",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:dynamodb:<AWS::Region>:<AWS::AccountId>:table/*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupInfraSetupCustomResource5473231F": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/asset6fe125aa44e17963ca1d497b61bbc9d90c8e55d630798532df276882b471d64e.zip"
+        },
+        "Description": "A custom resource lambda function to perform operations based on operation type",
+        "Environment": {
+          "Variables": {
+            "POWERTOOLS_SERVICE_NAME": "CUSTOM-RESOURCE",
+            "LOG_LEVEL": "DEBUG",
+            "AWS_SDK_USER_AGENT": "{ \"user_agent_extra\": \"AWSSOLUTION/SO0276/v1.4.4\" }"
+          }
+        },
+        "Handler": "lambda_func.handler",
+        "Layers": [
+          {
+            "Ref": "Boto3Layer463A0AEA"
+          },
+          {
+            "Ref": "PythonUserAgentLayer6958F3C0"
+          }
+        ],
+        "Role": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D",
+            "Arn"
+          ]
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+        "TracingConfig": {
+          "Mode": "Active"
+        }
+      },
+      "DependsOn": [
+        "DeploymentPlatformSetupCustomResourceLambdaRoleDefaultPolicy1B835079",
+        "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D"
+      ],
+      "Metadata": {
+        "aws:asset:path": "asset.6fe125aa44e17963ca1d497b61bbc9d90c8e55d630798532df276882b471d64e",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Code"
+      }
+    },
+    "DeploymentPlatformSetupInfraSetupScheduledAnonymousMetrics34A8D055": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/asset6fe125aa44e17963ca1d497b61bbc9d90c8e55d630798532df276882b471d64e.zip"
+        },
+        "Description": "A lambda function that runs as per defined schedule to publish metrics",
+        "Environment": {
+          "Variables": {
+            "POWERTOOLS_SERVICE_NAME": "ANONYMOUS-CW-METRICS",
+            "LOG_LEVEL": "DEBUG",
+            "SOLUTION_ID": "SO0276",
+            "SOLUTION_VERSION": "v1.4.4",
+            "REST_API_NAME": {
+              "Fn::Join": [
+                "",
+                [
+                  {
+                    "Fn::Select": [
+                      1,
+                      {
+                        "Fn::Split": [
+                          "/",
+                          {
+                            "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "-UseCaseManagementAPI"
+                ]
+              ]
+            },
+            "USE_CASE_UUID": {
+              "Fn::GetAtt": [
+                "DeploymentPlatformSetupGenUUIDE08D47F0",
+                "UUID"
+              ]
+            },
+            "AWS_SDK_USER_AGENT": "{ \"user_agent_extra\": \"AWSSOLUTION/SO0276/v1.4.4\" }"
+          }
+        },
+        "Handler": "lambda_ops_metrics.handler",
+        "Layers": [
+          {
+            "Ref": "Boto3Layer463A0AEA"
+          },
+          {
+            "Ref": "PythonUserAgentLayer6958F3C0"
+          }
+        ],
+        "Role": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F",
+            "Arn"
+          ]
+        },
+        "Runtime": "python3.12",
+        "Timeout": 900,
+        "TracingConfig": {
+          "Mode": "Active"
+        }
+      },
+      "DependsOn": [
+        "DeploymentPlatformSetupScheduledMetricsLambdaRoleDefaultPolicy7CE81C15",
+        "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F"
+      ],
+      "Metadata": {
+        "aws:asset:path": "asset.6fe125aa44e17963ca1d497b61bbc9d90c8e55d630798532df276882b471d64e",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Code"
+      },
+      "Condition": "AnonymousDataAWSCondition"
+    },
+    "DeploymentPlatformSetupInfraSetupGetMetricsDataPolicy82387FDA": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "cloudwatch:GetMetricData",
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "DeploymentPlatformSetupInfraSetupGetMetricsDataPolicy82387FDA",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Lambda requires this permission to read metrics from CloudWatch logs",
+              "id": "AwsSolutions-IAM5"
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupInfraSetupMetricsPublishFrequencyB2020316": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "rate(1 day)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "DeploymentPlatformSetupInfraSetupScheduledAnonymousMetrics34A8D055",
+                "Arn"
+              ]
+            },
+            "Id": "Target0"
+          }
+        ]
+      },
+      "Condition": "AnonymousDataAWSCondition"
+    },
+    "DeploymentPlatformSetupInfraSetupMetricsPublishFrequencyAllowEventRuleDeploymentPlatformStackDeploymentPlatformSetupInfraSetupScheduledAnonymousMetricsCE3BF48507FDD1A2": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupInfraSetupScheduledAnonymousMetrics34A8D055",
+            "Arn"
+          ]
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupInfraSetupMetricsPublishFrequencyB2020316",
+            "Arn"
+          ]
+        }
+      },
+      "Condition": "AnonymousDataAWSCondition"
+    },
+    "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream"
+                  ],
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:",
+                        {
+                          "Ref": "AWS::Partition"
+                        },
+                        ":logs:",
+                        {
+                          "Ref": "AWS::Region"
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId"
+                        },
+                        ":log-group:/aws/lambda/*"
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "Action": "logs:PutLogEvents",
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:",
+                        {
+                          "Ref": "AWS::Partition"
+                        },
+                        ":logs:",
+                        {
+                          "Ref": "AWS::Region"
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId"
+                        },
+                        ":log-group:/aws/lambda/*:log-stream:*"
+                      ]
+                    ]
+                  }
+                }
+              ],
+              "Version": "2012-10-17"
+            },
+            "PolicyName": "LambdaFunctionServiceRolePolicy"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Lambda functions has the required permission to write CloudWatch Logs. It uses custom policy instead of arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole with tighter permissions.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/lambda/*"
+              ]
+            },
+            {
+              "reason": "Lambda function has the required permission to write CloudWatch Log streams. It uses custom policy instead of arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole with tighter permissions.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/lambda/*:log-stream:*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupCustomResourceLambdaRoleDefaultPolicy1B835079": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "xray:PutTelemetryRecords",
+                "xray:PutTraceSegments"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "DeploymentPlatformSetupCustomResourceLambdaRoleDefaultPolicy1B835079",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Lambda role policy is configured to read data from S3 bucket",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Action::s3:Abort*",
+                "Action::s3:DeleteObject*",
+                "Resource::<SetupAppConfig016B0097.Arn>/*"
+              ]
+            },
+            {
+              "reason": "The wildcard permission is required to publish events for x-ray insights",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream"
+                  ],
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:",
+                        {
+                          "Ref": "AWS::Partition"
+                        },
+                        ":logs:",
+                        {
+                          "Ref": "AWS::Region"
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId"
+                        },
+                        ":log-group:/aws/lambda/*"
+                      ]
+                    ]
+                  }
+                },
+                {
+                  "Action": "logs:PutLogEvents",
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:",
+                        {
+                          "Ref": "AWS::Partition"
+                        },
+                        ":logs:",
+                        {
+                          "Ref": "AWS::Region"
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId"
+                        },
+                        ":log-group:/aws/lambda/*:log-stream:*"
+                      ]
+                    ]
+                  }
+                }
+              ],
+              "Version": "2012-10-17"
+            },
+            "PolicyName": "LambdaFunctionServiceRolePolicy"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Lambda functions has the required permission to write CloudWatch Logs. It uses custom policy instead of arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole with tighter permissions.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/lambda/*"
+              ]
+            },
+            {
+              "reason": "Lambda function has the required permission to write CloudWatch Log streams. It uses custom policy instead of arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole with tighter permissions.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/lambda/*:log-stream:*"
+              ]
+            },
+            {
+              "reason": "This policy allows get metric data from CloudWatch and has been specified per the AWS documentation.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupScheduledMetricsLambdaRoleDefaultPolicy7CE81C15": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "xray:PutTelemetryRecords",
+                "xray:PutTraceSegments"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "DeploymentPlatformSetupScheduledMetricsLambdaRoleDefaultPolicy7CE81C15",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "The wildcard permission is required to publish events for x-ray insights",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupOpsCustomDashboardC1C0C18E": {
+      "Type": "AWS::CloudWatch::Dashboard",
+      "Properties": {
+        "DashboardBody": {
+          "Fn::Join": [
+            "",
+            [
+              "{\"start\":\"start\",\"end\":\"end\",\"periodOverride\":\"auto\",\"widgets\":[{\"type\":\"metric\",\"width\":6,\"height\":6,\"x\":0,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"REST Endpoint Hits\",\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"metrics\":[[\"AWS/ApiGateway\",\"Count\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#9467bd\",\"label\":\"Count\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"AWS/ApiGateway\",\"CacheHitCount\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#2ca02c\",\"label\":\"CacheHitCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"AWS/ApiGateway\",\"CacheMissCount\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#d62728\",\"label\":\"CacheMissCount\",\"period\":3600,\"stat\":\"SampleCount\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":6,\"height\":6,\"x\":6,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"REST Endpoint Latency Stats\",\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"metrics\":[[\"AWS/ApiGateway\",\"Latency\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#ff7f0e\",\"label\":\"AverageLatency\",\"period\":3600}],[\"AWS/ApiGateway\",\"IntegrationLatency\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#1f77b4\",\"label\":\"MaxIntegrationLatency\",\"period\":3600,\"stat\":\"Maximum\"}],[\"AWS/ApiGateway\",\"Latency\",\"ApiName\",\"",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Ref": "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "-UseCaseManagementAPI\",{\"color\":\"#2ca02c\",\"label\":\"MaxLatency\",\"period\":3600,\"stat\":\"Maximum\"}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":6,\"height\":6,\"x\":12,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Cognito Sign-ins & Sign-ups\",\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"metrics\":[[\"AWS/Cognito\",\"SignInSuccesses\",\"UserPool\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupNewUserPoolB7DED0A0Ref"
+                ]
+              },
+              "\",\"UserPoolClient\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupAppClientFAA15074Ref"
+                ]
+              },
+              "\",{\"color\":\"#1f77b4\",\"label\":\"SignInSuccessesCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"AWS/Cognito\",\"SignInSuccesses\",\"UserPool\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupNewUserPoolB7DED0A0Ref"
+                ]
+              },
+              "\",\"UserPoolClient\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupAppClientFAA15074Ref"
+                ]
+              },
+              "\",{\"color\":\"#ff7f0e\",\"label\":\"AverageSignInSuccesses\",\"period\":3600}],[\"AWS/Cognito\",\"SignUpSuccesses\",\"UserPool\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupNewUserPoolB7DED0A0Ref"
+                ]
+              },
+              "\",\"UserPoolClient\",\"Admin\",{\"color\":\"#7f7f7f\",\"label\":\"SignUpSuccessesCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"AWS/Cognito\",\"SignUpSuccesses\",\"UserPool\",\"",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupNewUserPoolB7DED0A0Ref"
+                ]
+              },
+              "\",\"UserPoolClient\",\"Admin\",{\"color\":\"#9467bd\",\"label\":\"AverageSignUpSuccesses\",\"period\":3600}]],\"yAxis\":{}}},{\"type\":\"metric\",\"width\":6,\"height\":6,\"x\":18,\"y\":0,\"properties\":{\"view\":\"timeSeries\",\"title\":\"Stack Deployment Status Stats\",\"region\":\"",
+              {
+                "Ref": "AWS::Region"
+              },
+              "\",\"metrics\":[[\"Solution/UseCaseDeployments\",\"UCInitiationSuccess\",\"service\",\"UseCaseManagement\",{\"color\":\"#1f77b4\",\"label\":\"UCInitiationSuccessCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCInitiationFailure\",\"service\",\"UseCaseManagement\",{\"color\":\"#ff7f0e\",\"label\":\"UCInitiationFailureCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCDeletionSuccess\",\"service\",\"UseCaseManagement\",{\"color\":\"#9467bd\",\"label\":\"UCDeletionSuccessCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCDeletionFailure\",\"service\",\"UseCaseManagement\",{\"color\":\"#d62728\",\"label\":\"UCDeletionFailureCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCUpdateSuccess\",\"service\",\"UseCaseManagement\",{\"color\":\"#2ca02c\",\"label\":\"UCUpdateSuccessCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCUpdateFailure\",\"service\",\"UseCaseManagement\",{\"color\":\"#8c564b\",\"label\":\"UCUpdateFailureCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCDescribeSuccess\",\"service\",\"UseCaseManagement\",{\"color\":\"#e377c2\",\"label\":\"UCDescribeSuccessCount\",\"period\":3600,\"stat\":\"SampleCount\"}],[\"Solution/UseCaseDeployments\",\"UCDescribeFailure\",\"service\",\"UseCaseManagement\",{\"color\":\"#7f7f7f\",\"label\":\"UCDescribeFailureCount\",\"period\":3600,\"stat\":\"SampleCount\"}]],\"yAxis\":{}}}]}"
+            ]
+          ]
+        },
+        "DashboardName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AWS::StackName"
+              },
+              "-",
+              {
+                "Ref": "AWS::Region"
+              },
+              "-Dashboard"
+            ]
+          ]
+        }
+      },
+      "DeletionPolicy": "Delete",
+      "Condition": "DeployCustomDashboard"
+    },
+    "DeploymentPlatformSetupWriteToSSMBE1096BE": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "ssm:DeleteParameter",
+                "ssm:GetParameter",
+                "ssm:PutParameter"
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition"
+                    },
+                    ":ssm:",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId"
+                    },
+                    ":parameter/gaab-webconfig/*"
+                  ]
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "DeploymentPlatformSetupWriteToSSMBE1096BE",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "Permission is required to delete old webconfig ssm parameters",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:ssm:<AWS::Region>:<AWS::AccountId>:parameter/gaab-webconfig/*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentPlatformSetupGenUUIDE08D47F0": {
+      "Type": "Custom::GenUUID",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+            "Arn"
+          ]
+        },
+        "Resource": "GEN_UUID"
+      },
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete"
+    },
+    "DeploymentPlatformSetupSolutionHelperAnonymousData96B2086D": {
+      "Type": "Custom::AnonymousData",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+            "Arn"
+          ]
+        },
+        "Resource": "ANONYMOUS_METRIC",
+        "SolutionId": "SO0276",
+        "Version": "v1.4.4",
+        "UUID": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupGenUUIDE08D47F0",
+            "UUID"
+          ]
+        },
+        "VPC_ENABLED": {
+          "Ref": "VpcEnabled"
+        },
+        "CREATE_VPC": {
+          "Ref": "CreateNewVpc"
+        }
+      },
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete",
+      "Condition": "AnonymousDataAWSCondition"
+    },
+    "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "CustomResourceLambdaArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+              "Arn"
+            ]
+          },
+          "CustomResourceRoleArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D",
+              "Arn"
+            ]
+          },
+          "IPAMPoolId": {
+            "Ref": "IPAMPoolId"
+          },
+          "referencetoDeploymentPlatformStackRegistrySetup483F1675Id": {
+            "Fn::GetAtt": [
+              "RegistrySetupCC2515F0",
+              "Id"
+            ]
+          }
+        },
+        "TemplateURL": {
+          "Fn::Join": [
+            "",
+            [
+              "https://solutions-reference.s3.",
+              {
+                "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              "generative-ai-application-builder-on-aws/v1.4.4/DeploymentPlatformStackVPCDeploymentPlatformVPC42C65300.nested.template"
+            ]
+          ]
+        }
+      },
+      "DependsOn": [
+        "RegistrySetupCC2515F0"
+      ],
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete",
+      "Metadata": {
+        "aws:asset:path": "DeploymentPlatformStackVPCDeploymentPlatformVPC42C65300.nested.template.json",
+        "aws:asset:property": "TemplateURL"
+      },
+      "Condition": "DeployVPCCondition"
+    },
+    "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "DefaultUserEmail": {
+            "Ref": "AdminUserEmail"
+          },
+          "ApplicationTrademarkName": "Generative AI Application Builder on AWS",
+          "WebConfigSSMKey": {
+            "Fn::Join": [
+              "",
+              [
+                "/gaab-webconfig/",
+                {
+                  "Ref": "AWS::StackName"
+                }
+              ]
+            ]
+          },
+          "CustomResourceLambdaArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+              "Arn"
+            ]
+          },
+          "CustomResourceRoleArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D",
+              "Arn"
+            ]
+          },
+          "ExistingSecurityGroupIds": {
+            "Fn::If": [
+              "DeployVPCCondition",
+              {
+                "Fn::GetAtt": [
+                  "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+                  "Outputs.SecurityGroupIds"
+                ]
+              },
+              {
+                "Fn::Join": [
+                  ",",
+                  {
+                    "Ref": "ExistingSecurityGroupIds"
+                  }
+                ]
+              }
+            ]
+          },
+          "ExistingPrivateSubnetIds": {
+            "Fn::If": [
+              "DeployVPCCondition",
+              {
+                "Fn::GetAtt": [
+                  "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+                  "Outputs.PrivateSubnetIds"
+                ]
+              },
+              {
+                "Fn::Join": [
+                  ",",
+                  {
+                    "Ref": "ExistingPrivateSubnetIds"
+                  }
+                ]
+              }
+            ]
+          },
+          "referencetoDeploymentPlatformStackDeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResource0080A447OutputsDeploymentPlatformStackDeploymentPlatformStorageUseCasesTable8AE1DCF5Arn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResourceF56260D3",
+              "Outputs.DeploymentPlatformStackDeploymentPlatformStorageUseCasesTable8AE1DCF5Arn"
+            ]
+          },
+          "referencetoDeploymentPlatformStackDeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResource0080A447OutputsDeploymentPlatformStackDeploymentPlatformStorageModelInfoStorageModelInfoStore6E739C0DArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResourceF56260D3",
+              "Outputs.DeploymentPlatformStackDeploymentPlatformStorageModelInfoStorageModelInfoStore6E739C0DArn"
+            ]
+          },
+          "referencetoDeploymentPlatformStackDeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResource0080A447OutputsDeploymentPlatformStackDeploymentPlatformStorageUseCasesTable8AE1DCF5Ref": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResourceF56260D3",
+              "Outputs.DeploymentPlatformStackDeploymentPlatformStorageUseCasesTable8AE1DCF5Ref"
+            ]
+          },
+          "referencetoDeploymentPlatformStackDeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResource0080A447OutputsDeploymentPlatformStackDeploymentPlatformStorageModelInfoStorageModelInfoStore6E739C0DRef": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResourceF56260D3",
+              "Outputs.DeploymentPlatformStackDeploymentPlatformStorageModelInfoStorageModelInfoStore6E739C0DRef"
+            ]
+          },
+          "referencetoDeploymentPlatformStackAwsNodeSdkLayer390CBFFFRef": {
+            "Ref": "AwsNodeSdkLayer42C7A59C"
+          },
+          "referencetoDeploymentPlatformStackNodeUserAgentLayer24384C79Ref": {
+            "Ref": "NodeUserAgentLayer02526341"
+          },
+          "referencetoDeploymentPlatformStackRegistrySetup483F1675Id": {
+            "Fn::GetAtt": [
+              "RegistrySetupCC2515F0",
+              "Id"
+            ]
+          }
+        },
+        "TemplateURL": {
+          "Fn::Join": [
+            "",
+            [
+              "https://solutions-reference.s3.",
+              {
+                "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              "generative-ai-application-builder-on-aws/v1.4.4/DeploymentPlatformStackUseCaseManagementSetupUseCaseManagement4D56BB38.nested.template"
+            ]
+          ]
+        }
+      },
+      "DependsOn": [
+        "RegistrySetupCC2515F0"
+      ],
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete",
+      "Metadata": {
+        "aws:asset:path": "DeploymentPlatformStackUseCaseManagementSetupUseCaseManagement4D56BB38.nested.template.json",
+        "aws:asset:property": "TemplateURL"
+      }
+    },
+    "DeploymentPlatformStorageDeploymentPlatformStorageNestedStackDeploymentPlatformStorageNestedStackResourceF56260D3": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "CustomResourceLambdaArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+              "Arn"
+            ]
+          },
+          "CustomResourceRoleArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D",
+              "Arn"
+            ]
+          },
+          "referencetoDeploymentPlatformStackBoto3Layer6439E05DRef": {
+            "Ref": "Boto3Layer463A0AEA"
+          },
+          "referencetoDeploymentPlatformStackPythonUserAgentLayer6DA2A2CARef": {
+            "Ref": "PythonUserAgentLayer6958F3C0"
+          },
+          "referencetoDeploymentPlatformStackRegistrySetup483F1675Id": {
+            "Fn::GetAtt": [
+              "RegistrySetupCC2515F0",
+              "Id"
+            ]
+          }
+        },
+        "TemplateURL": {
+          "Fn::Join": [
+            "",
+            [
+              "https://solutions-reference.s3.",
+              {
+                "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              "generative-ai-application-builder-on-aws/v1.4.4/DeploymentPlatformStackDeploymentPlatformStorage5B30492E.nested.template"
+            ]
+          ]
+        }
+      },
+      "DependsOn": [
+        "RegistrySetupCC2515F0"
+      ],
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete",
+      "Metadata": {
+        "aws:asset:path": "DeploymentPlatformStackDeploymentPlatformStorage5B30492E.nested.template.json",
+        "aws:asset:property": "TemplateURL"
+      }
+    },
+    "WebConfig": {
+      "Type": "Custom::WriteWebConfig",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+            "Arn"
+          ]
+        },
+        "Resource": "WEBCONFIG",
+        "SSMKey": {
+          "Fn::Join": [
+            "",
+            [
+              "/gaab-webconfig/",
+              {
+                "Ref": "AWS::StackName"
+              }
+            ]
+          ]
+        },
+        "ApiEndpoint": {
+          "Fn::Join": [
+            "",
+            [
+              "https://",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorRestEndpointEndPointLambdaRestApiDB0E95B9Ref"
+                ]
+              },
+              ".execute-api.",
+              {
+                "Ref": "AWS::Region"
+              },
+              ".",
+              {
+                "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              {
+                "Fn::GetAtt": [
+                  "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+                  "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorRestEndpointEndPointLambdaRestApiDeploymentStageprodFA7420DFRef"
+                ]
+              },
+              "/"
+            ]
+          ]
+        },
+        "UserPoolId": {
+          "Fn::GetAtt": [
+            "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+            "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupNewUserPoolB7DED0A0Ref"
+          ]
+        },
+        "UserPoolClientId": {
+          "Fn::GetAtt": [
+            "UseCaseManagementSetupUseCaseManagementNestedStackUseCaseManagementNestedStackResource7ED7E421",
+            "Outputs.DeploymentPlatformStackUseCaseManagementSetupUseCaseManagementRequestProcessorDeploymentPlatformCognitoSetupAppClientFAA15074Ref"
+          ]
+        },
+        "IsInternalUser": {
+          "Fn::If": [
+            "IsInternalUserCondition",
+            true,
+            false
+          ]
+        },
+        "KnowledgeBaseParams": {
+          "kendra": {
+            "AvailableEditions": [
+              "DEVELOPER_EDITION",
+              "ENTERPRISE_EDITION"
+            ],
+            "DefaultEdition": "DEVELOPER_EDITION",
+            "DefaultNewKendraIndexName": "GAABKnowledgeBaseIndex",
+            "DefaultQueryCapacityUnits": 0,
+            "DefaultStorageCapacityUnits": 0,
+            "MaxQueryCapacityUnits": 1,
+            "MaxStorageCapacityUnits": 5,
+            "DefaultNumberOfDocs": 2,
+            "MaxNumberOfDocs": 100,
+            "MinNumberOfDocs": 1
+          }
+        }
+      },
+      "DependsOn": [
+        "DeploymentPlatformSetupWriteToSSMBE1096BE"
+      ],
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete"
+    },
+    "WebAppS3UINestedStackS3UINestedStackResource19E82599": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "Parameters": {
+          "WebConfigKey": {
+            "Fn::Join": [
+              "",
+              [
+                "/gaab-webconfig/",
+                {
+                  "Ref": "AWS::StackName"
+                }
+              ]
+            ]
+          },
+          "CustomResourceLambdaArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupInfraSetupCustomResource5473231F",
+              "Arn"
+            ]
+          },
+          "CustomResourceRoleArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D",
+              "Arn"
+            ]
+          },
+          "AccessLoggingBucketArn": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupAccessLog67D5D503",
+              "Arn"
+            ]
+          },
+          "UseCaseUUID": {
+            "Fn::GetAtt": [
+              "DeploymentPlatformSetupGenUUIDE08D47F0",
+              "UUID"
+            ]
+          },
+          "referencetoDeploymentPlatformStackRegistrySetup483F1675Id": {
+            "Fn::GetAtt": [
+              "RegistrySetupCC2515F0",
+              "Id"
+            ]
+          }
+        },
+        "TemplateURL": {
+          "Fn::Join": [
+            "",
+            [
+              "https://solutions-reference.s3.",
+              {
+                "Ref": "AWS::URLSuffix"
+              },
+              "/",
+              "generative-ai-application-builder-on-aws/v1.4.4/DeploymentPlatformStackWebAppS3UI37249B06.nested.template"
+            ]
+          ]
+        }
+      },
+      "DependsOn": [
+        "DeploymentPlatformSetupAccessLogPolicy2FB262B2",
+        "RegistrySetupCC2515F0",
+        "WebConfig"
+      ],
+      "UpdateReplacePolicy": "Delete",
+      "DeletionPolicy": "Delete",
+      "Metadata": {
+        "aws:asset:path": "DeploymentPlatformStackWebAppS3UI37249B06.nested.template.json",
+        "aws:asset:property": "TemplateURL"
+      },
+      "Condition": "DeployWebApp"
+    },
+    "RegistrySetupCC2515F0": {
+      "Type": "AWS::ServiceCatalogAppRegistry::Application",
+      "Properties": {
+        "Description": "Service Catalog application to track and manage all your resources for the solution generative-ai-application-builder-on-aws",
+        "Name": {
+          "Fn::Join": [
+            "",
+            [
+              "App-GAAB-Dashboard-",
+              {
+                "Ref": "AWS::StackName"
+              }
+            ]
+          ]
+        },
+        "Tags": {
+          "Solutions:ApplicationType": "AWS-Solutions",
+          "Solutions:SolutionID": "SO0276",
+          "Solutions:SolutionName": "generative-ai-application-builder-on-aws",
+          "Solutions:SolutionVersion": "v1.4.4"
+        }
+      }
+    },
+    "AppRegistryAssociation": {
+      "Type": "AWS::ServiceCatalogAppRegistry::ResourceAssociation",
+      "Properties": {
+        "Application": {
+          "Fn::GetAtt": [
+            "RegistrySetupCC2515F0",
+            "Id"
+          ]
+        },
+        "Resource": {
+          "Ref": "AWS::StackId"
+        },
+        "ResourceType": "CFN_STACK"
+      }
+    },
+    "AppAttributesC4C8180E": {
+      "Type": "AWS::ServiceCatalogAppRegistry::AttributeGroup",
+      "Properties": {
+        "Attributes": {
+          "applicationType": "AWS-Solutions",
+          "version": "v1.4.4",
+          "solutionID": "SO0276",
+          "solutionName": "generative-ai-application-builder-on-aws"
+        },
+        "Description": "Attributes for Solutions Metadata",
+        "Name": {
+          "Fn::Join": [
+            "",
+            [
+              "AttrGrp-",
+              {
+                "Ref": "AWS::StackName"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "AppAttributesApplicationAttributeGroupAssociation5d45ed99601285052111": {
+      "Type": "AWS::ServiceCatalogAppRegistry::AttributeGroupAssociation",
+      "Properties": {
+        "Application": {
+          "Fn::GetAtt": [
+            "RegistrySetupCC2515F0",
+            "Id"
+          ]
+        },
+        "AttributeGroup": {
+          "Fn::GetAtt": [
+            "AppAttributesC4C8180E",
+            "Id"
+          ]
+        }
+      }
+    },
+    "CustomMetricsPolicyFE11102D": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "cloudwatch:PutMetricData",
+              "Condition": {
+                "StringEquals": {
+                  "cloudwatch:namespace": [
+                    "AWS/ApiGateway",
+                    "AWS/Kendra",
+                    "AWS/Cognito",
+                    "Langchain/LLM"
+                  ]
+                }
+              },
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "CustomMetricsPolicyFE11102D",
+        "Roles": [
+          {
+            "Ref": "DeploymentPlatformSetupCustomResourceLambdaRole3C444A9D"
+          },
+          {
+            "Ref": "DeploymentPlatformSetupScheduledMetricsLambdaRole89420F9F"
+          }
+        ]
+      },
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "reason": "This policy allows put metric data to CloudWatch. The policy is restricted using policy conditions.",
+              "id": "AwsSolutions-IAM5",
+              "applies_to": [
+                "Resource::*"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "PythonUserAgentLayer6958F3C0": {
+      "Type": "AWS::Lambda::LayerVersion",
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.10",
+          "python3.11",
+          "python3.12"
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/asset35bb1f9aedb7d5a97cc38bffba47f98e3e143b55d820bc4080bd6a4a1a418718.zip"
+        },
+        "Description": "This layer configures AWS Python SDK initialization to send user-agent information"
+      },
+      "Metadata": {
+        "aws:asset:path": "asset.35bb1f9aedb7d5a97cc38bffba47f98e3e143b55d820bc4080bd6a4a1a418718",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Content"
+      }
+    },
+    "Boto3Layer463A0AEA": {
+      "Type": "AWS::Lambda::LayerVersion",
+      "Properties": {
+        "CompatibleRuntimes": [
+          "python3.10",
+          "python3.11",
+          "python3.12"
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/asset06cca4369cdecba4481c1b105a906ae5e0969729bd7a7479b5009aadba52516f.zip"
+        },
+        "Description": "Boto3 layer to be bundled with python lambda functions"
+      },
+      "Metadata": {
+        "aws:asset:path": "asset.06cca4369cdecba4481c1b105a906ae5e0969729bd7a7479b5009aadba52516f",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Content"
+      }
+    },
+    "NodeUserAgentLayer02526341": {
+      "Type": "AWS::Lambda::LayerVersion",
+      "Properties": {
+        "CompatibleRuntimes": [
+          "nodejs18.x",
+          "nodejs20.x"
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/asset102f676c7cd94c4ff53de17523959ef7a0944ed6405a77c7e1d7dc4fad54b4fa.zip"
+        },
+        "Description": "This layer configures AWS Node SDK initialization to send user-agent information"
+      },
+      "Metadata": {
+        "aws:asset:path": "asset.102f676c7cd94c4ff53de17523959ef7a0944ed6405a77c7e1d7dc4fad54b4fa",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Content"
+      }
+    },
+    "AwsNodeSdkLayer42C7A59C": {
+      "Type": "AWS::Lambda::LayerVersion",
+      "Properties": {
+        "CompatibleRuntimes": [
+          "nodejs18.x",
+          "nodejs20.x"
+        ],
+        "Content": {
+          "S3Bucket": {
+            "Fn::Sub": "solutions-${AWS::Region}"
+          },
+          "S3Key": "generative-ai-application-builder-on-aws/v1.4.4/assetfb41676cfa4dc7289f40b9a9e31abac8df6535abae0d0febf3c6dd590d792f1a.zip"
+        },
+        "Description": "AWS Javascript SDK v3 to be bundled with lambda functions as a layer"
+      },
+      "Metadata": {
+        "aws:asset:path": "asset.fb41676cfa4dc7289f40b9a9e31abac8df6535abae0d0febf3c6dd590d792f1a",
+        "aws:asset:is-bundled": true,
+        "aws:asset:property": "Content"
+      }
+    },
+    "CDKMetadata": {
+      "Type": "AWS::CDK::Metadata",
+      "Properties": {
+        "Analytics": "v2:deflate64:H4sIAAAAAAAA/3WRTU8jMQyGf0vvmdApHJbb9kPLBbRVQVyRJ2OmoZkkip1WVZT/jjKdfqzQnuzntWPH9kymelbLegIHqlS7q4xuZHplUDux/LRrCNAjYyiwdLbVrJ0tsIkGBRzoI9G9TIuodshFH72TWTuj1fEqj3yCBRBmoaGX6Zo3ehtncOjiDGZhoG9akOlPtOrc/9ZfY+g1UaFnOGJ4x0Bj6JazoPsPIEImOS9G4B4tk0zDMONQWSjjYnsAVluZVkDbxkFoS/gCWRCGvVaogMG4DrwP2GnicJRp+Wnn3hut4LIrJBeDwjmRU/oiz5mDbiLjU3DR/1Ru0nMWw49fGTptO3GuKJaR2PVXvDYr/uWOfyP7ONznBbzXtsvi4VFOJ7/L2cmZWJpQpZwlDlEx3ZXAae9Ve7TQu7aRzwO/udUgrBairn/JaQXGb+FcTLW74e1/FzSmp9sd/Tt3zsK6FuUX3e1nU1k/yOnki7SuQrSse5Sbk/0Gt97/y7wCAAA="
+      },
+      "Condition": "CDKMetadataAvailable"
+    }
+  },
+  "Outputs": {
+    "VpcId": {
+      "Description": "The ID of the VPC",
+      "Value": {
+        "Fn::If": [
+          "DeployVPCCondition",
+          {
+            "Fn::GetAtt": [
+              "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+              "Outputs.VpcId"
+            ]
+          },
+          {
+            "Ref": "ExistingVpcId"
+          }
+        ]
+      },
+      "Condition": "VPCEnabledCondition"
+    },
+    "PrivateSubnetIds": {
+      "Description": "Comma separated list of private subnet ids",
+      "Value": {
+        "Fn::If": [
+          "DeployVPCCondition",
+          {
+            "Fn::GetAtt": [
+              "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+              "Outputs.PrivateSubnetIds"
+            ]
+          },
+          {
+            "Fn::Join": [
+              ",",
+              {
+                "Ref": "ExistingPrivateSubnetIds"
+              }
+            ]
+          }
+        ]
+      },
+      "Condition": "VPCEnabledCondition"
+    },
+    "SecurityGroupIds": {
+      "Description": "Security group for the lambda functions in the VPC",
+      "Value": {
+        "Fn::If": [
+          "DeployVPCCondition",
+          {
+            "Fn::GetAtt": [
+              "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+              "Outputs.SecurityGroupIds"
+            ]
+          },
+          {
+            "Fn::Join": [
+              ",",
+              {
+                "Ref": "ExistingSecurityGroupIds"
+              }
+            ]
+          }
+        ]
+      },
+      "Condition": "VPCEnabledCondition"
+    },
+    "AvailabilityZones": {
+      "Description": "Comma separated list of AZs in which subnets of the VPCs are created",
+      "Value": {
+        "Fn::If": [
+          "DeployVPCCondition",
+          {
+            "Fn::GetAtt": [
+              "VPCDeploymentPlatformVPCNestedStackDeploymentPlatformVPCNestedStackResource186D2208",
+              "Outputs.AvailabilityZones"
+            ]
+          },
+          {
+            "Fn::Join": [
+              ",",
+              {
+                "Ref": "VpcAzs"
+              }
+            ]
+          }
+        ]
+      },
+      "Condition": "VPCEnabledCondition"
+    },
+    "WebConfigKey": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "/gaab-webconfig/",
+            {
+              "Ref": "AWS::StackName"
+            }
+          ]
+        ]
+      }
+    },
+    "CloudFrontWebUrl": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://",
+            {
+              "Fn::GetAtt": [
+                "WebAppS3UINestedStackS3UINestedStackResource19E82599",
+                "Outputs.DeploymentPlatformStackWebAppS3UIWebsiteUICloudFrontDistributionEEA22BE9DomainName"
+              ]
+            }
+          ]
+        ]
+      },
+      "Condition": "DeployWebApp"
+    }
+  },
+  "Mappings": {
+    "Solution": {
+      "Data": {
+        "SendAnonymousUsageData": "Yes",
+        "ID": "SO0276",
+        "Version": "v1.4.4",
+        "SolutionName": "generative-ai-application-builder-on-aws"
+      }
+    },
+    "FeaturesToDeploy": {
+      "Deploy": {
+        "WebApp": "Yes",
+        "CustomDashboard": "Yes"
+      }
+    },
+    "SourceCode": {
+      "General": {
+        "S3Bucket": "solutions",
+        "KeyPrefix": "generative-ai-application-builder-on-aws/v1.4.4",
+        "SolNamePrefix": "generative-ai-application-builder-on-aws"
+      }
+    }
+  }
+}
